@@ -1,0 +1,130 @@
+//cells with surface exclusion against the transmission system act as a physical barrier for the transmission of a conjugative plasmid
+
+//params
+
+conjRate := 0.0165;
+conjRateVar := 0.0;
+donorAmount := 300.0;
+recipientAmount := 700.0;
+tacti := 1.0;
+tdeg := 3.0;
+tacti_var := 0.0;
+tdeg_var := 0.0;
+sensibility := 5.0;
+outFlux := 3.0;
+inFlux := -2.0;
+diff := 0.2;
+deg := 0.05;
+phrOut_var := 0.0;
+phrIn_var := 0.0;
+
+global_params([ seed := 133086 , theme := _bright_theme, show_plots := false, auto_zoom := true, batch_mode := true]);
+
+grid([ name := "grid_A", ini_grid_size := 500 ]);
+pop_stat([ name := "location_x", input := "_x"]);
+pop_stat([ name := "location_y", input := "_y"]);
+
+//---biocircuits
+molecule([ name := "conj_op", times := { -5.0, tacti }, times_var := { tdeg_var, tacti_var } ]);
+molecule([ name := "rco", times := { -tdeg, tacti }, times_var := { tdeg_var, tacti_var } ]);
+molecule([ name := "rap", times := { -tdeg, tacti }, times_var := { tdeg_var, tacti_var } ]);
+molecule([ name := "phr", times := { -2.0, tacti }, times_var := { tdeg_var, tacti_var } ]); 
+molecule([name := "receipients", times :={ -1.0, 0.0 }, times_var := { 0.0, 0.0 } ]); 
+molecule([name := "transconjugants", times :={ -1.0, 0.0 }, times_var := { 0.0, 0.0 } ]); 
+
+bgate([ name := "Conj_on", input := {"conj_op"} ]);
+bgate([ name := "ga_Conj", input := {"-rco"} ]);
+bgate([ name := "ga_Rco", input := {"-rap"} ]);
+bgate([ name := "ga_Rap", input := {"-phr"} ]);
+
+
+bgate([ name := "ga_receip", input := {"-transconjugants"} ]);
+
+
+signal([ name := "s_phr"
+	, kdiff := diff
+	, kdeg := deg
+	, colour := {0.8, 0.0, 0.8}
+	, colour_sat := 10.0
+]);
+
+
+operon([ name := "op_Conj", gate := "ga_Conj", output := { "conj_op" } ]);
+operon([ name := "op_Rco", gate := "ga_Rco", output := { "rco" } ]);
+operon([ name := "op_Rap", gate := "ga_Rap", output := { "rap" } ]);
+
+operon([ name := "op_receip", gate := "ga_receip", output := { "receipients" } ]);
+operon([ name := "op_Trans", gate := "_ga_true", output := { "transconjugants" } ]);
+
+pilus([ name := "pil_A"
+	, donor_gate := "Conj_on"
+	, max_rate := conjRate
+	, max_rate_var := conjRateVar
+]);
+
+orit([ name := "ot_A", pilus := "pil_A" ]);
+
+plasmid([ name := "p_Transconj", oriTs := {"ot_A"} , operons := { "op_Conj", "op_Rco", "op_Rap", "op_Trans"}]);
+plasmid([name := "p_Recipients" , operons := { "op_receip"}]);
+
+
+bgate([ name := "bga_A", input := {"p_Transconj"} ]);
+
+flux([ name := "flux_phr_out"
+	, metabolite := "s_phr"
+	, gate := "bga_A"
+	, amount := outFlux
+	, amount_var := phrOut_var
+]);
+
+
+flux([ name := "flux_phr"
+	, metabolite := "s_phr"
+	, output := {"phr"}
+	, amount := inFlux
+	, amount_var := phrIn_var
+	, threshold := sensibility
+]);
+
+
+//---world control
+strain([ name := "str_A"
+	, base_growth_rate := 0.0231
+	, base_growth_rate_var := 0.0
+]);
+
+cell_type([ name := "cell_donor", molecules := {"conj_op"}, strain := "str_A", plasmids := {"p_Transconj"} ]);
+cell_type([ name := "cell_recipient", strain := "str_A", plasmids := {"p_Recipients"} ]);
+
+
+cell_placer([ name := "cp_recipient"
+	, cell_types := {"cell_recipient"}
+	, amount := recipientAmount
+	, coords := [ x := 0.0, y := 0.0, r := 250.0 ]
+]);
+
+cell_placer([ name := "cp_donor"
+	, cell_types := {"cell_donor"}
+	, amount := donorAmount 
+	, coords := [ x := 0.0, y := 0.0, r := 1.0 ]
+]);
+
+global_params ([ batch_mode := true ]);
+timer ([ name := "t_every_min",start := 1.0, stop := -1.0, period := 1.0 ]);
+
+//---visuals
+bgate([ name := "ga_pA", function := "AND", input := {"p_Transconj", "-phr", "-conj_op"} ]);
+cell_colour([ name := "ccol_green", gate := "ga_pA", rgb := _yellow]);
+
+bgate([ name := "bga_conj", function := "AND", input := {"conj_op"} ]);
+cell_colour([ name := "ccol_blue", gate := "bga_conj", rgb := _cyan]);
+
+bgate([ name := "bga_phr", function := "AND", input := {"phr", "-conj_op"}]);
+cell_colour([ name := "ccol_red", gate := "bga_phr", rgb := _red ]);
+
+cells_file([ name := "file", timer := "t_every_min",pop_fields:={"location_x", "location_y"}, fields := {"transconjugants"},
+path:= "gro_output", folder := "Conj_popul_0.001_0.01_1_out",  file_name := "gro_out_file" ]);
+
+pop_qgate([ name := "qpga_cellNum", input := "_cellnum", value := 100000.0 ]);
+timer([ name := "t_cellNum", gate := "qpga_cellNum" ]);
+checkpoint ([ name := "stop_cellNum", timer := "t_c
